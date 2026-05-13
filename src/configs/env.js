@@ -7,6 +7,11 @@ const env = {
     NODE_ENV: process.env.NODE_ENV || "development",
 
     MONGODB_URL: process.env.MONGODB_URL,
+
+    CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
+
+    RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 900000,
+    RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
 };
 
 export default env;
