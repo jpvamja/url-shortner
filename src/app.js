@@ -1,4 +1,6 @@
 import express from 'express';
+import path from "path";
+import { fileURLToPath } from "url";
 
 import cors from "cors";
 import helmet from "helmet";
@@ -7,6 +9,8 @@ import compression from "compression";
 import errorMiddleware from "./middlewares/error.middleware.js";
 import ApiResponse from "./utils/apiResponse.js";
 import limiter from "./middlewares/rateLimiter.middleware.js";
+
+import router from "./routes/index.routes.js";
 
 const app = express();
 
@@ -23,8 +27,15 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
 app.use(limiter);
 
+app.use(router);
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.static(path.join(__dirname, "../public")));
+
 app.get("/", (req, res) => {
-    res.send("Hello World!");
+    res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
 app.get("/health", async (req, res) => {
