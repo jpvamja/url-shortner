@@ -2,6 +2,19 @@ import express from "express";
 
 import rateLimit from "express-rate-limit";
 
+import {
+    validateBody,
+    validateParams,
+    validateQuery,
+} from "../middlewares/validator.middleware.js";
+
+import {
+    createShortUrlSchema,
+    redirectToOriginalUrlSchema,
+    shortUrlDetailsSchema,
+    paginationSchema,
+} from "../validations/url.validation.js";
+
 import asyncHandler from "../utils/asyncHandler.js";
 
 import {
@@ -11,8 +24,8 @@ import {
 } from "../controllers/url.controller.js";
 
 const createShortUrlLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, 
-    max: 20, 
+    windowMs: 15 * 60 * 1000,
+    max: 20,
     message: {
         success: false,
         message: "Too many short URLs created. Please try again later.",
@@ -23,8 +36,11 @@ const createShortUrlLimiter = rateLimit({
 
 const redirectToOriginalUrlLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
-    max: 300,
-    message: "Too many redirect requests.",
+    max: 1000,
+    message: {
+        success: false,
+        message: "Too many redirect requests.",
+    },
 });
 
 const detailsOfShortUrlLimiter = rateLimit({
@@ -43,18 +59,22 @@ const router = express.Router();
 router.post(
     "/shortener",
     createShortUrlLimiter,
+    validateBody(createShortUrlSchema),
     asyncHandler(createShortUrl)
 );
 
 router.get(
     "/:shortUrl",
     redirectToOriginalUrlLimiter,
+    validateParams(redirectToOriginalUrlSchema),
     asyncHandler(redirectToOriginalUrl)
 );
 
 router.get(
     "/details/:shortUrl",
     detailsOfShortUrlLimiter,
+    validateParams(shortUrlDetailsSchema),
+    validateQuery(paginationSchema),
     asyncHandler(detailsOfShortUrl)
 );
 
