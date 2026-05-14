@@ -57,7 +57,7 @@ const detailsOfShortUrlLimiter = rateLimit({
 const router = express.Router();
 
 router.post(
-    "/shortener",
+    "/shortner",
     createShortUrlLimiter,
     validateBody(createShortUrlSchema),
     asyncHandler(createShortUrl)
