@@ -6,7 +6,7 @@ const env = {
     PORT: process.env.PORT || 3000,
     NODE_ENV: process.env.NODE_ENV || "development",
 
-    MONGODB_URL: process.env.MONGODB_URL,
+    MONGODB_URL: process.env.MONGODB_URL || "mongodb://localhost:27017/url-shortner",
 
     CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
 
@@ -15,6 +15,8 @@ const env = {
 
     RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 900000,
     RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
+
+    NATS_URL: process.env.NATS_URL || "nats://localhost:4222",
 };
 
 export default env;

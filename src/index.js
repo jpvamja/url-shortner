@@ -1,12 +1,14 @@
 import app from "./app.js";
 import env from "./configs/env.js";
 import connectDB from "./configs/db.js";
+import { connectNats, getNatsClient } from "./configs/nats.js";
 
 let server;
 
 const start = async () => {
     try {
         await connectDB(env.MONGODB_URL);
+        await connectNats(env.NATS_URL);
 
         server = app.listen(env.PORT, () => {
             console.log(`Server running on port ${env.PORT}`);
@@ -19,6 +21,16 @@ const start = async () => {
 
 const gracefulShutdown = async () => {
     console.log("Received shutdown signal, closing gracefully...");
+
+    try {
+        const nc = getNatsClient();
+        await nc.drain();
+        await nc.close();
+        console.log("NATS closed");
+    } catch (err) {
+        console.log("NATS already closed");
+    }
+
     if (server) {
         server.close(() => {
             console.log("HTTP server closed");

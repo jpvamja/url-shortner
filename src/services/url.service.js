@@ -2,8 +2,10 @@ import net from "net";
 import { nanoid } from "nanoid";
 
 import ApiError from "../utils/apiError.js";
+import getPagination from "../utils/pagination.js";
 
 import Url from "../models/url.model.js";
+import UrlVisit from "../models/urlVisit.model.js";
 
 
 const isPrivateIPv4 = (ip) => {
@@ -191,18 +193,18 @@ async function createShortUrlService(originalUrl, customUrl = null) {
                 continue;
             }
             throw error;
-        } 
+        }
     }
-    throw new ApiError( 500, "Failed to generate unique short URL" );
+    throw new ApiError(500, "Failed to generate unique short URL");
 }
 
 async function redirectToOriginalUrlService(shortUrl) {
-    const validatedShortUrl = validateCustomUrlCode( shortUrl );
+    const validatedShortUrl = validateCustomUrlCode(shortUrl);
 
     const existingUrl = await Url.findOne({ shortUrl: validatedShortUrl, isActive: true, }).lean();
 
     if (!existingUrl) {
-        throw new ApiError( 404, "URL not found" );
+        throw new ApiError(404, "URL not found");
     }
 
     return {
@@ -212,10 +214,39 @@ async function redirectToOriginalUrlService(shortUrl) {
     };
 }
 
-async function detailsOfShortUrlService(shortUrl, query) {
-    return {
-        message: "Details of short URL",
+async function detailsOfShortUrlService(shortUrl, query = {}) {
+    const validatedShortUrl = validateCustomUrlCode(shortUrl);
+
+    const { page, limit, skip } = getPagination(query);
+
+    const filter = { shortUrl: validatedShortUrl, };
+
+    const [url, total, data] = await Promise.all([
+        Url.findOne({ shortUrl: validatedShortUrl, }).select("shortUrl clickCount createdAt").lean(),
+
+        UrlVisit.countDocuments(filter),
+
+        UrlVisit.find(filter).sort({ clickedAt: -1, }).skip(skip).limit(limit).lean(),
+    ]);
+
+    if (!url) {
+        throw new ApiError( 404, "URL not found" );
+    }
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    const response = {
+        shortUrl: validatedShortUrl,
+        totalClicks: url.clickCount || total,
+        createdAt: url.createdAt,
+        page,
+        limit,
+        total,
+        totalPages,
+        data,
     };
+
+    return response;
 }
 
 export {

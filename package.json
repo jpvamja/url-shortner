@@ -20,6 +20,8 @@
     "helmet": "^8.1.0",
     "mongoose": "^9.6.2",
     "nanoid": "^5.1.11",
+    "nats": "^2.29.3",
+    "ua-parser-js": "^2.0.9",
     "zod": "^4.4.3"
   },
   "devDependencies": {
