@@ -7,6 +7,24 @@ import getPagination from "../utils/pagination.js";
 import Url from "../models/url.model.js";
 import UrlVisit from "../models/urlVisit.model.js";
 
+// REDIS CACHE IMPORTS
+// IMPORT REDIS CACHE METHODS HERE
+
+// Example:
+// import {
+//     getShortUrlCache,
+//     setShortUrlCache,
+//     deleteShortUrlCache,
+// } from "../cache/shortUrl.cache.js";
+
+// BLOOM FILTER IMPORTS
+// IMPORT BLOOM FILTER METHODS HERE
+
+// Example:
+// import {
+//     addShortUrlToBloom,
+//     shortUrlExistsInBloom,
+// } from "../cache/shortUrl.bloom.js";
 
 const isPrivateIPv4 = (ip) => {
     const parts = ip.split(".").map(Number);
@@ -123,6 +141,15 @@ const toBase62 = (value) => {
 };
 
 const generateGeneratedShortUrl = async () => {
+
+    // BLOOM FILTER CHECK HERE
+    // before MongoDB exists() query
+    // Example flow:
+    // 1. generate short code
+    // 2. check Bloom filter
+    // 3. if maybe exists → continue
+    // 4. if definitely not exists → use directly
+
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
         const base62Code = toBase62(nanoid(5));
 
@@ -142,6 +169,13 @@ const generateGeneratedShortUrl = async () => {
 };
 
 async function createShortUrlService(originalUrl, customUrl = null) {
+
+    // AFTER SUCCESSFUL URL CREATION:
+    // 1. STORE shortUrl → originalUrl in Redis cache
+    // 2. ADD shortUrl into Bloom filter
+    // because:
+    // newly-created URLs are likely to be accessed immediately
+
     const validatedOriginalUrl = await validateOriginalUrl(originalUrl);
 
     if (customUrl) {
@@ -155,6 +189,33 @@ async function createShortUrlService(originalUrl, customUrl = null) {
             }
 
             const createdUrl = await Url.create({ originalUrl: validatedOriginalUrl, shortUrl: validatedCustomUrl, codeType: "custom", });
+
+            // ==========================
+            // REDIS CACHE WRITE HERE
+            // ==========================
+            //
+            // cache:
+            // shortUrl -> originalUrl
+            //
+            // Example:
+            //
+            // await setShortUrlCache(
+            //     createdUrl.shortUrl,
+            //     {
+            //         _id: createdUrl._id,
+            //         originalUrl: createdUrl.originalUrl,
+            //         shortUrl: createdUrl.shortUrl,
+            //     }
+            // );
+            //
+            //
+            // ==========================
+            // BLOOM FILTER ADD HERE
+            // ==========================
+            //
+            // await addShortUrlToBloom(
+            //     createdUrl.shortUrl
+            // );
 
             return {
                 id: createdUrl._id,
@@ -182,6 +243,21 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 
             const createdUrl = await Url.create({ originalUrl: validatedOriginalUrl, shortUrl: generatedShortUrl, codeType: "generated", });
 
+            // ==========================
+            // REDIS CACHE WRITE HERE
+            // ==========================
+            //
+            // store generated short URL
+            // into Redis cache
+            //
+            //
+            // ==========================
+            // BLOOM FILTER ADD HERE
+            // ==========================
+            //
+            // add generated short URL
+            // into Bloom filter
+
             return {
                 id: createdUrl._id,
                 originalUrl: createdUrl.originalUrl,
@@ -199,6 +275,29 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 }
 
 async function redirectToOriginalUrlService(shortUrl) {
+
+    // BLOOM FILTER CHECK HERE
+    // FIRST CHECK:
+    // await shortUrlExistsInBloom()
+    // if definitely not exists:
+    // reject immediately
+    // prevents MongoDB spam attacks
+    // FLOW:
+    // request
+    //   ↓
+    // bloom filter
+    //   ↓
+    // reject invalid quickly
+
+    // REDIS CACHE READ HERE
+    // MOST IMPORTANT CACHE LOCATION
+    // FLOW:
+    // 1. check Redis cache
+    // 2. if hit → return immediately
+    // 3. if miss → query MongoDB
+    // 4. store result back in Redis
+    // this endpoint gets hit on EVERY redirect
+
     const validatedShortUrl = validateCustomUrlCode(shortUrl);
 
     const existingUrl = await Url.findOne({ shortUrl: validatedShortUrl, isActive: true, }).lean();
@@ -207,31 +306,54 @@ async function redirectToOriginalUrlService(shortUrl) {
         throw new ApiError(404, "URL not found");
     }
 
-    return {
+    const response = {
         _id: existingUrl._id,
         originalUrl: existingUrl.originalUrl,
         shortUrl: existingUrl.shortUrl,
     };
+
+    // REDIS CACHE WRITE HERE
+    // store MongoDB result into Redis cache
+    // Example:
+    // await setShortUrlCache(
+    //     validatedShortUrl,
+    //     response
+    // );
+
+    return response;
 }
 
 async function detailsOfShortUrlService(shortUrl, query = {}) {
     const validatedShortUrl = validateCustomUrlCode(shortUrl);
 
+    // REDIS CACHE HERE
+    // analytics endpoint can use:
+    // SHORT TTL CACHE
+    // because analytics changes often
+    // good TTL:
+    // 30 sec
+    // 60 sec
+    // GOOD CACHE TARGETS:
+    // - click counts
+    // - URL metadata
+    // BAD CACHE TARGETS:
+    // - paginated visit lists
+
     const { page, limit, skip } = getPagination(query);
 
-    const filter = { shortUrl: validatedShortUrl, };
+    const url = await Url.findOne({ shortUrl: validatedShortUrl, }).select("_id shortUrl clickCount createdAt").lean();
 
-    const [url, total, data] = await Promise.all([
-        Url.findOne({ shortUrl: validatedShortUrl, }).select("shortUrl clickCount createdAt").lean(),
+    if (!url) {
+        throw new ApiError(404, "URL not found");
+    }
 
+    const filter = { urlId: url._id, };
+
+    const [total, data] = await Promise.all([
         UrlVisit.countDocuments(filter),
 
         UrlVisit.find(filter).sort({ clickedAt: -1, }).skip(skip).limit(limit).lean(),
     ]);
-
-    if (!url) {
-        throw new ApiError( 404, "URL not found" );
-    }
 
     const totalPages = Math.ceil(total / limit) || 1;
 

@@ -2,6 +2,7 @@ import app from "./app.js";
 import env from "./configs/env.js";
 import connectDB from "./configs/db.js";
 import { connectNats, getNatsClient } from "./configs/nats.js";
+import { connectRedis, getRedisClient } from "./configs/redis.js";
 
 let server;
 
@@ -9,7 +10,7 @@ const start = async () => {
     try {
         await connectDB(env.MONGODB_URL);
         await connectNats(env.NATS_URL);
-
+        await connectRedis(env.REDIS_URL);
         server = app.listen(env.PORT, () => {
             console.log(`Server running on port ${env.PORT}`);
         });
@@ -29,6 +30,14 @@ const gracefulShutdown = async () => {
         console.log("NATS closed");
     } catch (err) {
         console.log("NATS already closed");
+    }
+
+    try {
+        const redis = getRedisClient();
+        await redis.quit();
+        console.log("Redis closed");
+    } catch (err) {
+        console.log("Redis already closed");
     }
 
     if (server) {

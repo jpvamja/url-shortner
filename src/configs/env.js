@@ -17,6 +17,8 @@ const env = {
     RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
 
     NATS_URL: process.env.NATS_URL || "nats://localhost:4222",
+
+    REDIS_URL: process.env.REDIS_URL || "redis://127.0.0.1:6379",
 };
 
 export default env;
