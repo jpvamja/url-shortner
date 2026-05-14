@@ -18,7 +18,12 @@ async function redirectToOriginalUrl(req, res) {
     const { shortUrl } = req.params;
 
     const result = await redirectToOriginalUrlService(shortUrl);
-    res.status(200).json(new ApiResponse(200, result, "Redirecting to original URL"));
+
+    if (!result) {
+        throw new ApiError(404, "URL not found");
+    }
+
+     return res.redirect( 302, result.originalUrl );
 }
 
 async function detailsOfShortUrl(req, res) {

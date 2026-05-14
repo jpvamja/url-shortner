@@ -197,8 +197,18 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 }
 
 async function redirectToOriginalUrlService(shortUrl) {
+    const validatedShortUrl = validateCustomUrlCode( shortUrl );
+
+    const existingUrl = await Url.findOne({ shortUrl: validatedShortUrl, isActive: true, }).lean();
+
+    if (!existingUrl) {
+        throw new ApiError( 404, "URL not found" );
+    }
+
     return {
-        message: "Redirecting to original URL",
+        _id: existingUrl._id,
+        originalUrl: existingUrl.originalUrl,
+        shortUrl: existingUrl.shortUrl,
     };
 }
 
