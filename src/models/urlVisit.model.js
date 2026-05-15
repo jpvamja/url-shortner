@@ -51,6 +51,8 @@ const urlVisitSchema = new mongoose.Schema(
     }
 );
 
-const UrlVisit = mongoose.model( "UrlVisit", urlVisitSchema );
+urlVisitSchema.index({ urlId: 1, clickedAt: -1 });
+
+const UrlVisit = mongoose.model("UrlVisit", urlVisitSchema);
 
 export default UrlVisit;

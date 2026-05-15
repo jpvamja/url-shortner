@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "worker:click": "node src/worker/click.worker.js",
+    "ensure-indexes": "node ./scripts/ensureIndexes.js"
   },
   "keywords": [],
   "author": "",

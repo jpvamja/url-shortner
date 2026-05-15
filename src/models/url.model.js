@@ -59,6 +59,21 @@ const urlSchema = new mongoose.Schema(
     }
 );
 
+urlSchema.index({ shortUrl: 1, isActive: 1 });
+
+
+urlSchema.pre("save", function (next) {
+    if (this.isNew && !this.expiresAt) {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() + 100);
+        this.expiresAt = d;
+    }
+
+    next();
+});
+
+urlSchema.index({ expiresAt: 1, isActive: 1 });
+
 const Url = mongoose.model("Url", urlSchema);
 
 export default Url;

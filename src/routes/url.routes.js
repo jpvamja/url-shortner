@@ -64,18 +64,18 @@ router.post(
 );
 
 router.get(
-    "/:shortUrl",
-    redirectToOriginalUrlLimiter,
-    validateParams(redirectToOriginalUrlSchema),
-    asyncHandler(redirectToOriginalUrl)
-);
-
-router.get(
     "/details/:shortUrl",
     detailsOfShortUrlLimiter,
     validateParams(shortUrlDetailsSchema),
     validateQuery(paginationSchema),
     asyncHandler(detailsOfShortUrl)
+);
+
+router.get(
+    "/:shortUrl",
+    redirectToOriginalUrlLimiter,
+    validateParams(redirectToOriginalUrlSchema),
+    asyncHandler(redirectToOriginalUrl)
 );
 
 export default router;

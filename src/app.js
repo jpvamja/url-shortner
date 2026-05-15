@@ -11,13 +11,20 @@ import ApiResponse from "./utils/apiResponse.js";
 import limiter from "./middlewares/rateLimiter.middleware.js";
 
 import router from "./routes/index.routes.js";
+import env from "./configs/env.js";
 
 const app = express();
 
 app.set("trust proxy", 1);
 app.use(helmet());
+const corsOrigins = (() => {
+    const raw = env.CORS_ORIGIN ?? "*";
+    if (raw === "*") return true;
+    return raw.split(",").map((s) => s.trim()).filter(Boolean);
+})();
+
 app.use(cors({
-    origin: process.env.CORS_ORIGIN.split(","),
+    origin: corsOrigins,
     credentials: true,
 }));
 app.use(compression());
