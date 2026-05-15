@@ -29,13 +29,13 @@ const validate = (schema, source) => {
                 new ApiResponse(
                     400,
                     null,
-                    "Validation Error",
+                    result.error.issues[0].message,
                     result.error.flatten()
                 )
             );
         }
 
-        req[source] = result.data;
+        Object.assign(req[source], result.data);
 
         next();
     };

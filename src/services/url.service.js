@@ -7,24 +7,19 @@ import getPagination from "../utils/pagination.js";
 import Url from "../models/url.model.js";
 import UrlVisit from "../models/urlVisit.model.js";
 
-// REDIS CACHE IMPORTS
-// IMPORT REDIS CACHE METHODS HERE
+import {
+    shortUrlExistsInBloom,
+    addShortUrlToBloom
+} from "../cache/shortUrl.bloom.js";
 
-// Example:
-// import {
-//     getShortUrlCache,
-//     setShortUrlCache,
-//     deleteShortUrlCache,
-// } from "../cache/shortUrl.cache.js";
+import {
+    getShortUrlCache,
+    setShortUrlCache
+} from "../cache/shortUrl.cache.js";
 
-// BLOOM FILTER IMPORTS
-// IMPORT BLOOM FILTER METHODS HERE
-
-// Example:
-// import {
-//     addShortUrlToBloom,
-//     shortUrlExistsInBloom,
-// } from "../cache/shortUrl.bloom.js";
+import {
+    setAnalyticsCache,
+} from "../cache/urlAnalytics.cache.js";
 
 const isPrivateIPv4 = (ip) => {
     const parts = ip.split(".").map(Number);
@@ -142,14 +137,6 @@ const toBase62 = (value) => {
 
 const generateGeneratedShortUrl = async () => {
 
-    // BLOOM FILTER CHECK HERE
-    // before MongoDB exists() query
-    // Example flow:
-    // 1. generate short code
-    // 2. check Bloom filter
-    // 3. if maybe exists → continue
-    // 4. if definitely not exists → use directly
-
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
         const base62Code = toBase62(nanoid(5));
 
@@ -157,7 +144,14 @@ const generateGeneratedShortUrl = async () => {
             continue;
         }
 
+        const maybeExists = await shortUrlExistsInBloom(base62Code);
+
+        if (maybeExists) {
+            continue;
+        }
+
         const existingUrl = await Url.exists({ shortUrl: base62Code, });
+
         if (existingUrl) {
             continue;
         }
@@ -169,12 +163,6 @@ const generateGeneratedShortUrl = async () => {
 };
 
 async function createShortUrlService(originalUrl, customUrl = null) {
-
-    // AFTER SUCCESSFUL URL CREATION:
-    // 1. STORE shortUrl → originalUrl in Redis cache
-    // 2. ADD shortUrl into Bloom filter
-    // because:
-    // newly-created URLs are likely to be accessed immediately
 
     const validatedOriginalUrl = await validateOriginalUrl(originalUrl);
 
@@ -190,32 +178,19 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 
             const createdUrl = await Url.create({ originalUrl: validatedOriginalUrl, shortUrl: validatedCustomUrl, codeType: "custom", });
 
-            // ==========================
-            // REDIS CACHE WRITE HERE
-            // ==========================
-            //
-            // cache:
-            // shortUrl -> originalUrl
-            //
-            // Example:
-            //
-            // await setShortUrlCache(
-            //     createdUrl.shortUrl,
-            //     {
-            //         _id: createdUrl._id,
-            //         originalUrl: createdUrl.originalUrl,
-            //         shortUrl: createdUrl.shortUrl,
-            //     }
-            // );
-            //
-            //
-            // ==========================
-            // BLOOM FILTER ADD HERE
-            // ==========================
-            //
-            // await addShortUrlToBloom(
-            //     createdUrl.shortUrl
-            // );
+            await setShortUrlCache(
+                createdUrl.shortUrl,
+                {
+                    _id: createdUrl._id.toString(),
+                    originalUrl: createdUrl.originalUrl,
+                    shortUrl: createdUrl.shortUrl,
+                },
+                3600 // 1 hour TTL
+            );
+
+            await addShortUrlToBloom(
+                createdUrl.shortUrl
+            );
 
             return {
                 id: createdUrl._id,
@@ -243,20 +218,19 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 
             const createdUrl = await Url.create({ originalUrl: validatedOriginalUrl, shortUrl: generatedShortUrl, codeType: "generated", });
 
-            // ==========================
-            // REDIS CACHE WRITE HERE
-            // ==========================
-            //
-            // store generated short URL
-            // into Redis cache
-            //
-            //
-            // ==========================
-            // BLOOM FILTER ADD HERE
-            // ==========================
-            //
-            // add generated short URL
-            // into Bloom filter
+            await setShortUrlCache(
+                createdUrl.shortUrl,
+                {
+                    _id: createdUrl._id.toString(),
+                    originalUrl: createdUrl.originalUrl,
+                    shortUrl: createdUrl.shortUrl,
+                },
+                3600
+            );
+
+            await addShortUrlToBloom(
+                createdUrl.shortUrl
+            );
 
             return {
                 id: createdUrl._id,
@@ -276,29 +250,19 @@ async function createShortUrlService(originalUrl, customUrl = null) {
 
 async function redirectToOriginalUrlService(shortUrl) {
 
-    // BLOOM FILTER CHECK HERE
-    // FIRST CHECK:
-    // await shortUrlExistsInBloom()
-    // if definitely not exists:
-    // reject immediately
-    // prevents MongoDB spam attacks
-    // FLOW:
-    // request
-    //   ↓
-    // bloom filter
-    //   ↓
-    // reject invalid quickly
-
-    // REDIS CACHE READ HERE
-    // MOST IMPORTANT CACHE LOCATION
-    // FLOW:
-    // 1. check Redis cache
-    // 2. if hit → return immediately
-    // 3. if miss → query MongoDB
-    // 4. store result back in Redis
-    // this endpoint gets hit on EVERY redirect
-
     const validatedShortUrl = validateCustomUrlCode(shortUrl);
+
+    const maybeExists = await shortUrlExistsInBloom(validatedShortUrl);
+
+    if (!maybeExists) {
+        throw new ApiError(404, "URL not found");
+    }
+
+    const cachedUrl = await getShortUrlCache(validatedShortUrl);
+
+    if (cachedUrl) {
+        return cachedUrl;
+    }
 
     const existingUrl = await Url.findOne({ shortUrl: validatedShortUrl, isActive: true, }).lean();
 
@@ -312,32 +276,17 @@ async function redirectToOriginalUrlService(shortUrl) {
         shortUrl: existingUrl.shortUrl,
     };
 
-    // REDIS CACHE WRITE HERE
-    // store MongoDB result into Redis cache
-    // Example:
-    // await setShortUrlCache(
-    //     validatedShortUrl,
-    //     response
-    // );
+    await setShortUrlCache(
+        validatedShortUrl,
+        response,
+        3600
+    );
 
     return response;
 }
 
 async function detailsOfShortUrlService(shortUrl, query = {}) {
     const validatedShortUrl = validateCustomUrlCode(shortUrl);
-
-    // REDIS CACHE HERE
-    // analytics endpoint can use:
-    // SHORT TTL CACHE
-    // because analytics changes often
-    // good TTL:
-    // 30 sec
-    // 60 sec
-    // GOOD CACHE TARGETS:
-    // - click counts
-    // - URL metadata
-    // BAD CACHE TARGETS:
-    // - paginated visit lists
 
     const { page, limit, skip } = getPagination(query);
 
@@ -367,6 +316,12 @@ async function detailsOfShortUrlService(shortUrl, query = {}) {
         totalPages,
         data,
     };
+
+    try {
+        await setAnalyticsCache(url._id.toString(), response, 60);
+    } catch (error) {
+        console.error("Analytics cache write failed, continuing without cache:", error);
+    }
 
     return response;
 }
